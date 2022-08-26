@@ -8,8 +8,9 @@
   let minx = -1;
   let miny = -1;
   let maxy = initialH;
-  const intervalSeconds = 0.01;
+  const intervalSeconds = 0.0;
   let stopped = false;
+  let borders = true;
 
   function stop() {
     stopped = true;
@@ -76,6 +77,10 @@
       }
     }
   }
+  function toggle(x, y) {
+    if (!current.delete([x, y].join(","))) current.add([x, y].join(","));
+    current = current;
+  }
 </script>
 
 <svelte:window on:keyup={(e) => e.key == " " && iter()} />
@@ -87,34 +92,40 @@
     <button on:click={iter}>Iterate</button>
     <button on:click={play}>Play</button>
     <button on:click={stop}>Stop</button>
+    <button
+      on:click={() => {
+        stop();
+        current = new Set();
+      }}>Reset</button>
+    <button on:click={() => (borders = !borders)}>Borders</button>
   </div>
 
-  <div class="w-full h-full flex justify-center">
-    <div
-      style="grid-template-columns: repeat({maxx -
-        minx +
-        1}, minmax(0, 1fr)); grid-template-rows: repeat({maxy -
-        miny +
-        1}, minmax(0, 1fr)); 
+  <div
+    style="grid-template-columns: repeat({maxx -
+      minx +
+      1}, minmax(0, 1fr)); grid-template-rows: repeat({maxy -
+      miny +
+      1}, minmax(0, 1fr)); 
       width: min(100%, {(maxx - minx + 1) * 40}px);
       height: min(100%, {(maxy - miny + 1) * 40}px)"
-      class="inline-grid gap-x-0 p-10 aspect-square">
-      {#each Array(maxy - miny + 1).fill(0) as _y, y}
-        {#each Array(maxx - minx + 1).fill(0) as _x, x}
+    class="inline-grid gap-x-0 p-10">
+    {#each Array(maxy - miny + 1).fill(0) as _y, y}
+      {#each Array(maxx - minx + 1).fill(0) as _x, x}
+        <!-- svelte-ignore a11y-mouse-events-have-key-events -->
+        <div class="w-full">
           <div
-            class="w-full h-full max-w-[40px] max-h-[40px] {current.has(
+            class="{borders
+              ? 'border'
+              : ''} w-full pt-[100%] max-w-[40px] max-h-[40px] bg-clip-padding {current.has(
               [x + minx, y + miny].join(',')
             )
               ? 'bg-white border-black'
               : 'bg-black border-white'}"
-            on:click={() => {
-              if (!current.delete([x + minx, y + miny].join(",")))
-                current.add([x + minx, y + miny].join(","));
-              current = current;
-            }} />
-        {/each}
+            on:mouseover={(e) => e.buttons & 0b1 && toggle(x + minx, y + miny)}
+            on:mousedown={() => toggle(x + minx, y + miny)} />
+        </div>
       {/each}
-    </div>
+    {/each}
   </div>
 </main>
 
