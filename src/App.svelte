@@ -1,5 +1,6 @@
 <script>
-  import { onMount, onDestroy } from "svelte";
+  import { onMount } from "svelte";
+  import { parse_rle } from "./parser";
 
   const initialW = 10;
   const initialH = 10;
@@ -8,12 +9,10 @@
   let minx = -1;
   let miny = -1;
   let maxy = initialH;
-  const intervalSeconds = 0.0;
+  let interval = 0;
   let stopped = true;
-  let borders = true;
   let canvas;
   let blur = false;
-  let grid = true;
 
   function reset() {
     stopped = true;
@@ -22,7 +21,6 @@
     miny = -1;
     maxy = initialH;
     current = new Set();
-    grid = true;
     draw();
   }
 
@@ -30,13 +28,44 @@
     stopped = !stopped;
     function f() {
       if (stopped) return;
-      iter();
-      setTimeout(f, intervalSeconds * 1000);
+      if (isNaN(interval) || typeof interval !== "number") {
+        setTimeout(f, 10);
+      } else {
+        if (interval < 0) {
+          for (let i = 0; i < -interval - 1; i++) iter();
+        }
+        iter();
+        draw();
+        setTimeout(f, interval);
+      }
     }
     if (!stopped) {
-      grid = false;
-      setTimeout(f, intervalSeconds * 1000);
+      setTimeout(f, 0);
     }
+  }
+
+  onMount(draw);
+
+  async function load(e) {
+    current = new Set();
+    const text = new FormData(e.target).get("text");
+    const out = parse_rle(text);
+    minx = miny = Infinity;
+    maxx = maxy = -Infinity;
+    for (let i = 0; i < out.field_x.length; i++) {
+      const x = out.field_x[i];
+      const y = out.field_y[i];
+      current.add([x, y].join(","));
+      minx = Math.min(x, minx);
+      miny = Math.min(y, miny);
+      maxx = Math.max(x, maxx);
+      maxy = Math.max(y, maxy);
+    }
+    minx--;
+    miny--;
+    maxx++;
+    maxy++;
+    draw();
   }
 
   function iter() {
@@ -81,14 +110,23 @@
     maxx++;
     maxy++;
     current = next;
-
-    draw();
   }
+  let xbufs = 0;
+  let ybufs = 0;
   function draw() {
-    canvas.height = maxy - miny + 1;
-    canvas.width = maxx - minx + 1;
+    const maxbufs = 100;
+    const buf = 10;
+    if (ybufs > maxbufs || Math.abs(canvas.height - (maxy - miny + 1)) > buf) {
+      canvas.height = maxy - miny + 1;
+      ybufs = 0;
+    } else ybufs++;
+    if (xbufs > maxbufs || Math.abs(canvas.width - (maxx - minx + 1)) > buf) {
+      canvas.width = maxx - minx + 1;
+      xbufs = 0;
+    } else xbufs++;
     const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "black";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = "white";
     for (const s of current.values()) {
       const [x, y] = s.split(",").map((s) => +s);
@@ -103,62 +141,100 @@
       }
     }
   }
+
+  function getCursorPosition(canvas, event) {
+    const rect = canvas.getBoundingClientRect();
+    const yMultiplier = canvas.clientHeight / canvas.height;
+    const xMultiplier = canvas.clientWidth / canvas.width;
+    const m = Math.min(xMultiplier, yMultiplier);
+    const sx = canvas.width * m;
+    const sy = canvas.height * m;
+    const leftBar = (canvas.clientWidth - sx) / 2;
+    const topBar = (canvas.clientHeight - sy) / 2;
+    const x = Math.floor(
+      ((event.clientX - rect.left - leftBar) * canvas.width) / sx
+    );
+    const y = Math.floor(
+      ((event.clientY - rect.top - topBar) * canvas.height) / sy
+    );
+    return { x, y };
+  }
+
+  function md(e) {
+    const { x, y } = getCursorPosition(canvas, e);
+    lastMO = { x, y };
+    toggle(x + minx, y + miny);
+  }
+
+  let lastMO = {};
+  function mo(e) {
+    if (e.buttons & 0b1) {
+      const { x, y } = getCursorPosition(canvas, e);
+      if (lastMO.x === x && lastMO.y === y) return;
+      lastMO = { x, y };
+      enable(x + minx, y + miny);
+    } else if (e.buttons & 0b10) {
+      const { x, y } = getCursorPosition(canvas, e);
+      if (lastMO.x === x && lastMO.y === y) return;
+      lastMO = { x, y };
+      disable(x + minx, y + miny);
+    }
+  }
+
+  function disable(x, y) {
+    current.delete([x, y].join(","));
+    draw();
+  }
+
+  function enable(x, y) {
+    current.add([x, y].join(","));
+    draw();
+  }
+
   function toggle(x, y) {
     if (!current.delete([x, y].join(","))) current.add([x, y].join(","));
-    current = current;
+    draw();
   }
 </script>
 
 <svelte:window on:keyup={(e) => e.key == " " && iter()} />
 
 <main
-  class="inline-flex min-w-full flex-col justify-center items-center h-screen w-screen gap-10 p-10">
-  <div class="flex gap-5 items-center">
+  class="inline-flex min-w-full flex-col justify-center overflow-y-hidden items-center h-screen w-full gap-5 p-10">
+  <div class="inline-flex gap-5 items-center">
     <h1 class="text-xl">game of life</h1>
-    <button on:click={iter}>Iterate</button>
-    <button data-on={!stopped} on:click={play}>Play</button>
-    <button on:click={reset}>Reset</button>
-    <button data-on={borders} on:click={() => (borders = !borders)}
-      >Borders</button>
-    <button data-on={blur} on:click={() => (blur = !blur)}>Blur</button>
-    <button data-on={grid} on:click={() => (grid = !grid)}>Grid</button>
+    <div class="flex gap-5 items-stretch">
+      <button on:click={iter}>Iterate</button>
+      <button data-on={!stopped} on:click={play}>Play</button>
+      <button on:click={reset}>Reset</button>
+      <button data-on={blur} on:click={() => (blur = !blur)}>Blur</button>
+      <div class="flex items-center border border-black gap-3 px-[10px]">
+        Interval:
+        <input
+          class="h-full w-20 p-1 outline-none"
+          type="number"
+          bind:value={interval} />
+      </div>
+      <form on:submit|preventDefault={load} class="flex gap-1">
+        <textarea
+          class="resize-none border-black border p-1 min-h-full h-0 w-28"
+          name="text"
+          placeholder="rle file" />
+        <button type="submit">Load</button>
+      </form>
+    </div>
+    <pre>click = toggle
+LMB drag = enable
+RMB drag = disable</pre>
   </div>
 
   <canvas
     style={blur ? "" : "image-rendering: pixelated;"}
-    class="h-full bg-black"
-    bind:this={canvas} />
-
-  {#if grid}
-    <div
-      style="grid-template-columns: repeat({maxx -
-        minx +
-        1}, minmax(0, 1fr)); grid-template-rows: repeat({maxy -
-        miny +
-        1}, minmax(0, 1fr)); 
-      width: min(100%, {(maxx - minx + 1) * 40}px);
-      height: min(100%, {(maxy - miny + 1) * 40}px)"
-      class="inline-grid gap-x-0">
-      {#each Array(maxy - miny + 1).fill(0) as _y, y}
-        {#each Array(maxx - minx + 1).fill(0) as _x, x}
-          <!-- svelte-ignore a11y-mouse-events-have-key-events -->
-          <div class="w-full">
-            <div
-              class="{borders
-                ? 'border'
-                : ''} w-full pt-[100%] max-w-[40px] max-h-[40px] bg-clip-padding {current.has(
-                [x + minx, y + miny].join(',')
-              )
-                ? 'bg-white border-black'
-                : 'bg-black border-white'}"
-              on:mouseover={(e) =>
-                e.buttons & 0b1 && toggle(x + minx, y + miny)}
-              on:mousedown={() => toggle(x + minx, y + miny)} />
-          </div>
-        {/each}
-      {/each}
-    </div>
-  {/if}
+    class="w-full h-full object-contain"
+    bind:this={canvas}
+    on:mousedown={md}
+    on:mousemove={mo}
+    on:contextmenu|preventDefault />
 </main>
 
 <style>
