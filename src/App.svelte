@@ -114,16 +114,16 @@
   let xbufs = 0;
   let ybufs = 0;
   function draw() {
-    const maxbufs = 100;
-    const buf = 10;
-    if (ybufs > maxbufs || Math.abs(canvas.height - (maxy - miny + 1)) > buf) {
-      canvas.height = maxy - miny + 1;
-      ybufs = 0;
-    } else ybufs++;
-    if (xbufs > maxbufs || Math.abs(canvas.width - (maxx - minx + 1)) > buf) {
-      canvas.width = maxx - minx + 1;
-      xbufs = 0;
-    } else xbufs++;
+    // const maxbufs = 0;
+    // const buf = 10;
+    // if (ybufs > maxbufs || Math.abs(canvas.height - (maxy - miny + 1)) > buf) {
+    canvas.height = maxy - miny + 1;
+    // ybufs = 0;
+    // } else ybufs++;
+    // if (xbufs > maxbufs || Math.abs(canvas.width - (maxx - minx + 1)) > buf) {
+    canvas.width = maxx - minx + 1;
+    // xbufs = 0;
+    // } else xbufs++;
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "black";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
