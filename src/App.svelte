@@ -9,7 +9,7 @@
   let minx = -1;
   let miny = -1;
   let maxy = initialH;
-  let interval = 0;
+  let interval = 100;
   let stopped = true;
   let canvas;
   let blur = false;
@@ -25,30 +25,37 @@
   }
 
   function play() {
-    stopped = !stopped;
-    function f() {
-      if (stopped) return;
-      if (isNaN(interval) || typeof interval !== "number") {
-        setTimeout(f, 10);
-      } else {
-        if (interval < 0) {
-          for (let i = 0; i < -interval - 1; i++) iter();
-        }
-        iter();
-        draw();
-        setTimeout(f, interval);
-      }
-    }
-    if (!stopped) {
-      setTimeout(f, 0);
+    const validInterval = (i) => !isNaN(i) && typeof i === "number" && i >= 0;
+    if (stopped && validInterval(interval)) {
+      stopped = false;
+      setTimeout(function f() {
+        if (!stopped && validInterval(interval)) {
+          iter();
+          setTimeout(f, interval);
+        } else stopped = true;
+      }, interval);
+    } else if (!stopped) {
+      stopped = true;
     }
   }
 
-  onMount(draw);
+  onMount(() => {
+    load(`#N 112P15
+#O thunk
+#C http://conwaylife.com/wiki/112P15
+#C http://conwaylife.com/patterns/112p15.rle
+x = 25, y = 25, rule = B3/S23
+6bo11bo$7b2o7b2o$3bobob2o7b2obobo$2bobo15bobo$3bo17bo$2bo19bo$o9b2ob2o
+9bo$b2o8bobo8b2o$b2o6bobobobo6b2o$8bobo3bobo$6bo2bo5bo2bo$6b3o7b3o2$6b
+3o7b3o$6bo2bo5bo2bo$8bobo3bobo$b2o6bobobobo6b2o$b2o8bobo8b2o$o9b2ob2o
+9bo$2bo19bo$3bo17bo$2bobo15bobo$3bobob2o7b2obobo$7b2o7b2o$6bo11bo!`);
+    draw();
+  });
 
-  async function load(e) {
+  async function load(text) {
+    reset();
+    if (!text.length) return;
     current = new Set();
-    const text = new FormData(e.target).get("text");
     const out = parse_rle(text);
     minx = miny = Infinity;
     maxx = maxy = -Infinity;
@@ -110,20 +117,12 @@
     maxx++;
     maxy++;
     current = next;
+
+    draw();
   }
-  let xbufs = 0;
-  let ybufs = 0;
   function draw() {
-    // const maxbufs = 0;
-    // const buf = 10;
-    // if (ybufs > maxbufs || Math.abs(canvas.height - (maxy - miny + 1)) > buf) {
     canvas.height = maxy - miny + 1;
-    // ybufs = 0;
-    // } else ybufs++;
-    // if (xbufs > maxbufs || Math.abs(canvas.width - (maxx - minx + 1)) > buf) {
     canvas.width = maxx - minx + 1;
-    // xbufs = 0;
-    // } else xbufs++;
     const ctx = canvas.getContext("2d");
     ctx.fillStyle = "black";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -199,42 +198,54 @@
 
 <svelte:window on:keyup={(e) => e.key == " " && iter()} />
 
-<main
-  class="inline-flex min-w-full flex-col justify-center overflow-y-hidden items-center h-screen w-full gap-5 p-10">
-  <div class="inline-flex gap-5 items-center">
-    <h1 class="text-xl">game of life</h1>
-    <div class="flex gap-5 items-stretch">
-      <button on:click={iter}>Iterate</button>
-      <button data-on={!stopped} on:click={play}>Play</button>
-      <button on:click={reset}>Reset</button>
-      <button data-on={blur} on:click={() => (blur = !blur)}>Blur</button>
-      <div class="flex items-center border border-black gap-3 px-[10px]">
-        Interval:
-        <input
-          class="h-full w-20 p-1 outline-none"
-          type="number"
-          bind:value={interval} />
+<main class="overflow-auto h-screen">
+  <div class="inline-flex flex-col h-full min-w-full p-3 gap-3">
+    <!-- bar, canvas, copyright -->
+    <div class="flex justify-center flex-wrap gap-x-5 gap-y-3 items-center">
+      <h1 class="text-xl">game of life</h1>
+      <div class="flex gap-x-5 gap-y-3 flex-wrap justify-center items-stretch">
+        <button on:click={iter}>Iterate</button>
+        <button data-on={!stopped} on:click={play}>Play</button>
+        <button on:click={reset}>Reset</button>
+        <button data-on={blur} on:click={() => (blur = !blur)}>Blur</button>
+        <div class="flex items-center border border-black gap-3 px-[10px]">
+          Interval:
+          <input
+            class="h-full w-20 p-1 outline-none"
+            type="number"
+            bind:value={interval} />
+        </div>
+        <form
+          on:submit|preventDefault={(e) =>
+            load(new FormData(e.target).get("text"))}
+          class="flex gap-1">
+          <textarea
+            class="resize-none border-black border p-1 min-h-full h-0 w-28"
+            name="text"
+            placeholder="rle file" />
+          <button type="submit">Load</button>
+        </form>
       </div>
-      <form on:submit|preventDefault={load} class="flex gap-1">
-        <textarea
-          class="resize-none border-black border p-1 min-h-full h-0 w-28"
-          name="text"
-          placeholder="rle file" />
-        <button type="submit">Load</button>
-      </form>
-    </div>
-    <pre>click = toggle
+      <pre>click = toggle
 LMB drag = enable
 RMB drag = disable</pre>
-  </div>
+    </div>
+    <div class="flex flex-col grow justify-center items-center">
+      <!-- main bar, canvas -->
 
-  <canvas
-    style={blur ? "" : "image-rendering: pixelated;"}
-    class="w-full h-full object-contain"
-    bind:this={canvas}
-    on:mousedown={md}
-    on:mousemove={mo}
-    on:contextmenu|preventDefault />
+      <canvas
+        style={blur ? "" : "image-rendering: pixelated;"}
+        class="bg-stone-600 object-contain w-[500px] h-[500px] "
+        bind:this={canvas}
+        on:mousedown={md}
+        on:mousemove={mo}
+        on:contextmenu|preventDefault />
+    </div>
+
+    <div class="flex justify-center">
+      © {new Date().getFullYear()} Miika Tuominen
+    </div>
+  </div>
 </main>
 
 <style>
